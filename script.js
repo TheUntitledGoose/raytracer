@@ -11,13 +11,14 @@
   const c2 = document.querySelector('#imguiCanvas')
   const ctx2 = c2.getContext('2d')
   
-  let imgui = new window.ImGui(200, 250, 400, 100, c2);
+  let imgui = new window.ImGui(600, 50, 400, 100, c2);
   
   let reflect_checkbox = imgui.checkbox("Reflections", true);
   let specular_checkbox = imgui.checkbox("Specular reflections", false);
   let bounces_slider = imgui.slider(0, 20, undefined, 7, { text: "Bounces" });
   let samples_per_ray_slider = imgui.slider(0, 6, undefined, 1, { text: "Samples per ray" });
   let max_sample_slider = imgui.slider(0, 16384, undefined, 2048, { text: "Samples" });
+  let exposure = imgui.slider(0, 3, undefined, 1, { text: "Exposure", float: true });
   let progress = imgui.staticText(`Progress: 0/2048`, "white", true)
   let button = imgui.button("Render", true);
   button.onClick(() => {
@@ -193,7 +194,7 @@
       ctx.stroke();
     }
   
-    castAndDraw(ctx, objects, maxLength = 1000, color = [0,0,255,0.01]) {
+    castAndDraw(targetCtx, objects, maxLength = 1000, color = [0,0,255,1]) {
       let closestDist = Infinity;
       let closestPoint = null;
       let closestObj = null;
@@ -215,15 +216,15 @@
   
       // Decide where to draw
       const drawLength = Math.min(closestDist, maxLength);
-      ctx.strokeStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3]})`;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(this.origin.x, this.origin.y);
-      ctx.lineTo(
+      targetCtx.strokeStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3]})`;
+      targetCtx.lineWidth = 1;
+      targetCtx.beginPath();
+      targetCtx.moveTo(this.origin.x, this.origin.y);
+      targetCtx.lineTo(
         this.origin.x + this.direction.dx * drawLength,
         this.origin.y + this.direction.dy * drawLength
       );
-      ctx.stroke();
+      targetCtx.stroke();
   
       // Return the intersection point for further reflection/refraction
       return [closestPoint, closestObj];
@@ -264,7 +265,7 @@
   const walls = [floor,floor2, wall, wall2, wall3];
   
   // Create rays
-  const rays_amount = 50;
+  const rays_amount = 150;
   let rays = new Array(rays_amount);
   for (let i = 0; i < rays_amount; i++) {
   
@@ -274,11 +275,11 @@
     rays[i] = (new Ray(
       new Point(50, 50),
       new Vector(Math.cos(radians),Math.sin(radians)),
-      [255,255,255, 0]
+      [255,255,255, 1]
     ))  
   }
   
-  function traceRays(initialRays, walls, maxBounces = 3) {
+  function traceRays(initialRays, walls, maxBounces = 3, currentCtx) {
     let rays = [...initialRays]; // copy of starting rays
   
     for (let bounce = 0; bounce <= maxBounces; bounce++) {
@@ -288,14 +289,14 @@
         // Process only rays at the current bounce level
         if (ray.bounceLevel !== bounce) continue;
   
-        const [hitPoint, wall] = ray.castAndDraw(ctx, walls, 1000, ray.color);
+        const [hitPoint, wall] = ray.castAndDraw(currentCtx, walls, 1000, ray.color);
         if (!hitPoint) continue;
   
         // Blend colors (inheritance)
         const light = [
-          (ray.color[0]) * (wall.material.color[0]/255) * wall.material.absorption * 0.99,
-          (ray.color[1]) * (wall.material.color[1]/255) * wall.material.absorption * 0.99,
-          (ray.color[2]) * (wall.material.color[2]/255) * wall.material.absorption * 0.99,
+          (ray.color[0]) * (wall.material.color[0]/255) * 0.99,
+          (ray.color[1]) * (wall.material.color[1]/255) * 0.99,
+          (ray.color[2]) * (wall.material.color[2]/255) * 0.99,
           (ray.color[3]) * (wall.material.color[3]),
         ];
         
@@ -351,6 +352,15 @@
   }
   window.requestAnimationFrame(imgui_animate)
 
+  // Accumulation buffer (stores floats between 0–1)
+  let accumulationBuffer = new Float32Array(windowWidth * windowHeight * 4);
+
+  // Create a single reusable offscreen render target
+  let currentFrame = document.createElement("canvas");
+  currentFrame.width = windowWidth;
+  currentFrame.height = windowHeight;
+  let currentCtx = currentFrame.getContext("2d", { willReadFrequently: true });
+
   let step = 0;
   function animate() {
 
@@ -362,17 +372,15 @@
     progress.text = `Progress: ${step}/${max_sample}`
 
     // Render
-    ctx.globalCompositeOperation = "color-dodge";
-    ctx.fillStyle = `rgba(0,0,0,.01)`
-    ctx.fillRect(0,0, windowWidth, windowHeight)
-    // ctx.globalCompositeOperation = "source-over";
+
+    // ----- 1. Clear offscreen canvas and draw single noisy sample -----
+    currentCtx.clearRect(0, 0, windowWidth, windowHeight);
 
     
     // Draw objects
     for (const wall of walls) {
-      wall.draw(ctx)
+      wall.draw(currentCtx)
     }
-    // ctx.globalCompositeOperation = "saturation";
   
     // let rays = new Array(rays_amount);
     for (let i = 0; i < rays_amount; i++) {
@@ -383,13 +391,13 @@
       rays[i] = (new Ray(
         new Point(50, 50),
         new Vector(Math.cos(radians),Math.sin(radians)),
-        [255,255,255, 0.01]
+        [255,255,255, 1]
       ))
     }
     
     if (rays[0]) {
 
-      traceRays(rays, walls, bounces)
+      traceRays(rays, walls, bounces, currentCtx)
       
       // traceRaysMultiThread(rays, walls, bounces, (results) => {
       //   // Draw results
@@ -406,6 +414,24 @@
 
       step++;
     }
+
+    // ----- 2. Grab pixels once -----
+    let frameImage = currentCtx.getImageData(0, 0, windowWidth, windowHeight);
+    let cdata = frameImage.data;
+
+    // ----- 3. Update accumulation buffer -----
+    for (let i = 0; i < cdata.length; i++) {
+      let sample = (cdata[i] / 255.0);
+      accumulationBuffer[i] = ((accumulationBuffer[i]) * (step-.5) + (sample)) / (step);
+    }
+
+    // ----- 4. Present averaged result -----
+    let output = ctx.createImageData(windowWidth, windowHeight);
+    let odata = output.data;
+    for (let i = 0; i < odata.length; i++) {
+      odata[i] = Math.min(255, (accumulationBuffer[i]) * 255 * exposure.state);
+    }
+    ctx.putImageData(output, 0, 0);
 
   
     window.requestAnimationFrame(animate)
@@ -468,5 +494,15 @@
   window.addEventListener('resize', () => {
       windowWidth = window.innerWidth;
       windowHeight = window.innerHeight;
+      
+      c.width = windowWidth;
+      c.height = windowHeight;
+      
+      currentFrame.width = windowWidth;
+      currentFrame.height = windowHeight;
+      
+      accumulationBuffer = new Float32Array(windowWidth * windowHeight * 4);
+
+      step = 0;
   })
 })()
