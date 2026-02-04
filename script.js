@@ -15,11 +15,11 @@
   
   let reflect_checkbox = imgui.checkbox("Reflections", true);
   let specular_checkbox = imgui.checkbox("Specular reflections", true);
-  let bounces_slider = imgui.slider(0, 20, undefined, 2, { text: "Bounces" });
-  let samples_per_ray_slider = imgui.slider(0, 6, undefined, 2, { text: "Samples per ray" });
+  let bounces_slider = imgui.slider(0, 10, undefined, 2, { text: "Bounces" });
+  let samples_per_ray_slider = imgui.slider(0, 8, undefined, 2, { text: "Samples per ray" });
   let max_sample_slider = imgui.slider(0, 16384, undefined, 2048, { text: "Samples" });
   let exposure = imgui.slider(0, 3, undefined, 1, { text: "Exposure", float: true });
-  let progress = imgui.staticText(`Progress: 0/2048`, "white", true)
+  let progress = imgui.staticText(`Progress: 0/2048 \nFPS: 0`, "white", true)
   let button = imgui.button("Render", true);
   button.onClick(() => {
     step = 0;
@@ -292,13 +292,13 @@
   
   
   // Create scene objects
-  const floor = new LineSegment(new Point(100, 500), new Point(700, 500), [20,105,203,1]);
+  const floor = new LineSegment(new Point(100, 500), new Point(700, 500), [0,105,203,1]);
   const floor2 = new LineSegment(new Point(100, 480), new Point(300, 480), [255,255,255,1]);
   const wall = new LineSegment(new Point(300, 300), new Point(700, 300), [255,0,0,1]);
   const wall2 = new LineSegment(new Point(500, 400), new Point(700, 400), [255,255,0,1]);
   const wall3 = new LineSegment(new Point(200, 100), new Point(300, 70), [0,255,0,1]);
 
-  const circle = new Circle(100,80,50,2*Math.PI,Math.PI*1/2, 100, [255,255,255,1]);
+  const circle = new Circle(100,80,50,2*Math.PI,Math.PI*1/2, 1000, [255,255,255,1]);
   
   const walls = [floor,floor2, wall, wall2, wall3, ...circle.lines];
   
@@ -329,14 +329,33 @@
   
         const [hitPoint, wall] = ray.castAndDraw(currentCtx, walls, 1000, ray.color);
         if (!hitPoint) continue;
+
+        // ----- 1. Apply wall albedo / energy loss -----
+        const albedo = [
+          wall.material.color[0] / 255,
+          wall.material.color[1] / 255,
+          wall.material.color[2] / 255,
+          wall.material.color[3] * 0.5 // alpha
+        ];
+
+        const light = [
+          ray.color[0] * albedo[0] * 0.85,
+          ray.color[1] * albedo[1] * 0.85,
+          ray.color[2] * albedo[2] * 0.85,
+          ray.color[3] * albedo[3] * 0.5
+        ];
+
+        // Early skip if energy too low
+        const maxEnergy = Math.max(light[0], light[1], light[2]);
+        if (maxEnergy < 0.005) continue;
   
         // Blend colors (inheritance)
-        const light = [
-          (ray.color[0]) * (wall.material.color[0]/255) * 0.85,
-          (ray.color[1]) * (wall.material.color[1]/255) * 0.85,
-          (ray.color[2]) * (wall.material.color[2]/255) * 0.85,
-          (ray.color[3]) * (wall.material.color[3]) * 0.5,
-        ];
+        // const light = [
+        //   (ray.color[0]) * (wall.material.color[0]/255) * 0.85,
+        //   (ray.color[1]) * (wall.material.color[1]/255) * 0.85,
+        //   (ray.color[2]) * (wall.material.color[2]/255) * 0.85,
+        //   (ray.color[3]) * (wall.material.color[3]) * 0.5,
+        // ];
         
   
         // Calculate surface normal
@@ -350,11 +369,14 @@
           hitPoint.y + normal.dy * 0.0001
         );
   
-        // Reflect ray
-        let reflected = ray.direction.reflect(normal);
-  
         // Always add the reflected ray if specular bounce is desired
         if (reflect_checkbox.state) {
+          
+          const reflected = ray.direction.reflect(normal);
+
+          // Reduce energy slightly on each bounce
+          const reflectedLight = light.map(c => c * 0.85);
+
           nextBounceRays.push(
             new Ray(offsetOrigin, reflected, light, bounce + 1)
           );
@@ -367,6 +389,8 @@
             const randomOffset = Math.random() * range - range / 2;
             const dirAngle = Math.atan2(normal.dy, normal.dx) + randomOffset;
             const dirVec = new Vector(Math.cos(dirAngle), Math.sin(dirAngle));
+
+            // Cosine weighting + energy scaling
     
             nextBounceRays.push(
               new Ray(offsetOrigin, dirVec, light, bounce + 1)
@@ -407,9 +431,11 @@
     bounces = parseInt(bounces_slider.state);
     samples_per_ray = parseInt(samples_per_ray_slider.state);
     max_sample = parseInt(max_sample_slider.state);
-
+    
+    let startTime = performance.now()
+    
     if (step > max_sample) return window.requestAnimationFrame(animate)
-    progress.text = `Progress: ${step}/${max_sample}`
+    // progress.text = `Progress: ${step}/${max_sample}\nFPS: ${1000/}`
 
     // Render
 
@@ -481,6 +507,9 @@
     }
     ctx.putImageData(output, 0, 0);
 
+    let endTime = performance.now()
+
+    progress.text = `Progress: ${step}/${max_sample}\nms: ${endTime - startTime}`
   
     window.requestAnimationFrame(animate)
   }
