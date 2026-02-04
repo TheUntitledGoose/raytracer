@@ -14,9 +14,9 @@
   let imgui = new window.ImGui(600, 50, 400, 100, c2);
   
   let reflect_checkbox = imgui.checkbox("Reflections", true);
-  let specular_checkbox = imgui.checkbox("Specular reflections", false);
-  let bounces_slider = imgui.slider(0, 20, undefined, 7, { text: "Bounces" });
-  let samples_per_ray_slider = imgui.slider(0, 6, undefined, 1, { text: "Samples per ray" });
+  let specular_checkbox = imgui.checkbox("Specular reflections", true);
+  let bounces_slider = imgui.slider(0, 20, undefined, 2, { text: "Bounces" });
+  let samples_per_ray_slider = imgui.slider(0, 6, undefined, 2, { text: "Samples per ray" });
   let max_sample_slider = imgui.slider(0, 16384, undefined, 2048, { text: "Samples" });
   let exposure = imgui.slider(0, 3, undefined, 1, { text: "Exposure", float: true });
   let progress = imgui.staticText(`Progress: 0/2048`, "white", true)
@@ -209,7 +209,7 @@
           if (dist < closestDist && dist > 1e-8) {
             closestDist = dist;
             closestPoint = hitPoint;
-            closestObj = obj;
+            closestObj = hitPoint.obj ? hitPoint.obj : obj;
           }
         }
       }
@@ -246,6 +246,42 @@
       return this.refractiveIndexFunc(wavelength);
     }
   }
+
+  class Circle {
+    constructor(x, y, radius, startAngle, endAngle, segments, material=[255,255,255,1]) {
+      this.x = x;
+      this.y = y;
+      this.radius = radius;
+      this.startAngle = startAngle;
+      this.endAngle = endAngle;
+      
+      this.lines = new Array(segments);
+
+      for (var i = 0; i < segments; i++) {
+        this.lines[i] = new LineSegment(
+          new Point(
+            this.x+this.radius*Math.cos(this.startAngle+(this.endAngle/segments)*i), 
+            this.y+this.radius*Math.sin(this.startAngle+(this.endAngle/segments)*i)
+          ),
+          new Point(
+            this.x+this.radius*Math.cos(this.startAngle+(this.endAngle/segments)*(i+1)), 
+            this.y+this.radius*Math.sin(this.startAngle+(this.endAngle/segments)*(i+1))
+          ),
+          material
+        )
+      }
+    }
+
+    draw(ctx, lineWidth = 2) {
+      for (const line of this.lines) {
+        line.draw(ctx, 2)
+      }
+      // ctx.beginPath();
+      // ctx.arc(this.x, this.y, this.radius, this.startAngle, this.endAngle);
+      // ctx.fillStyle = 'white';
+      // ctx.fill();
+    }
+  }
   
   // let bounces = 7;
   // let samples_per_ray = 1;
@@ -261,11 +297,13 @@
   const wall = new LineSegment(new Point(300, 300), new Point(700, 300), [255,0,0,1]);
   const wall2 = new LineSegment(new Point(500, 400), new Point(700, 400), [255,255,0,1]);
   const wall3 = new LineSegment(new Point(200, 100), new Point(300, 70), [0,255,0,1]);
+
+  const circle = new Circle(100,80,50,2*Math.PI,Math.PI*1/2, 100, [255,255,255,1]);
   
-  const walls = [floor,floor2, wall, wall2, wall3];
+  const walls = [floor,floor2, wall, wall2, wall3, ...circle.lines];
   
   // Create rays
-  const rays_amount = 150;
+  const rays_amount = 50;
   let rays = new Array(rays_amount);
   for (let i = 0; i < rays_amount; i++) {
   
@@ -294,10 +332,10 @@
   
         // Blend colors (inheritance)
         const light = [
-          (ray.color[0]) * (wall.material.color[0]/255) * 0.99,
-          (ray.color[1]) * (wall.material.color[1]/255) * 0.99,
-          (ray.color[2]) * (wall.material.color[2]/255) * 0.99,
-          (ray.color[3]) * (wall.material.color[3]),
+          (ray.color[0]) * (wall.material.color[0]/255) * 0.85,
+          (ray.color[1]) * (wall.material.color[1]/255) * 0.85,
+          (ray.color[2]) * (wall.material.color[2]/255) * 0.85,
+          (ray.color[3]) * (wall.material.color[3]) * 0.5,
         ];
         
   
@@ -338,7 +376,8 @@
       }
   
       // Merge new rays into the main list
-      rays.push(...nextBounceRays);
+      // rays.push(...nextBounceRays);
+      rays = nextBounceRays;
     }
   
     return rays;
@@ -350,6 +389,7 @@
     imgui.draw();
     window.requestAnimationFrame(imgui_animate)
   }
+
   window.requestAnimationFrame(imgui_animate)
 
   // Accumulation buffer (stores floats between 0–1)
@@ -362,8 +402,8 @@
   let currentCtx = currentFrame.getContext("2d", { willReadFrequently: true });
 
   let step = 0;
-  function animate() {
 
+  function animate() {
     bounces = parseInt(bounces_slider.state);
     samples_per_ray = parseInt(samples_per_ray_slider.state);
     max_sample = parseInt(max_sample_slider.state);
@@ -381,6 +421,7 @@
     for (const wall of walls) {
       wall.draw(currentCtx)
     }
+    // ctx.globalCompositeOperation = "saturation";
   
     // let rays = new Array(rays_amount);
     for (let i = 0; i < rays_amount; i++) {
@@ -421,15 +462,22 @@
 
     // ----- 3. Update accumulation buffer -----
     for (let i = 0; i < cdata.length; i++) {
-      let sample = (cdata[i] / 255.0);
-      accumulationBuffer[i] = ((accumulationBuffer[i]) * (step-.5) + (sample)) / (step);
+      // let sample = (cdata[i] / 255.0);
+      const sample = Math.min(1.0, cdata[i] / 255); // clamp to prevent wash-out
+      accumulationBuffer[i] = ((accumulationBuffer[i]) * (step-1) + (sample)) / (step);
     }
 
     // ----- 4. Present averaged result -----
     let output = ctx.createImageData(windowWidth, windowHeight);
     let odata = output.data;
-    for (let i = 0; i < odata.length; i++) {
-      odata[i] = Math.min(255, (accumulationBuffer[i]) * 255 * exposure.state);
+    // for (let i = 0; i < odata.length; i++) {
+    //   odata[i] = Math.min(255, (accumulationBuffer[i]) * 255 * exposure.state);
+    // }
+    for (let i = 0; i < odata.length; i += 4) {
+      odata[i + 0] = Math.min(255, accumulationBuffer[i + 0] * 255 * exposure.state);
+      odata[i + 1] = Math.min(255, accumulationBuffer[i + 1] * 255 * exposure.state);
+      odata[i + 2] = Math.min(255, accumulationBuffer[i + 2] * 255 * exposure.state);
+      odata[i + 3] = 255; // keep alpha fully opaque
     }
     ctx.putImageData(output, 0, 0);
 
@@ -505,4 +553,18 @@
 
       step = 0;
   })
+
+  document.addEventListener('mousemove', (e) => {
+    if (e.buttons != 1) return
+    if (imgui.checkHover(e.clientX, e.clientY)) return
+    for (const line of circle.lines) {
+      line.start.x += e.movementX;
+      line.start.y += e.movementY;
+      line.end.x += e.movementX;
+      line.end.y += e.movementY;
+
+      step = 0;
+    }
+  })
+  
 })()
