@@ -15,7 +15,7 @@
   
   let reflect_checkbox = imgui.checkbox("Reflections", true);
   let specular_checkbox = imgui.checkbox("Specular reflections", true);
-  let bounces_slider = imgui.slider(0, 10, undefined, 2, { text: "Bounces" });
+  let bounces_slider = imgui.slider(0, 10, undefined, 5, { text: "Bounces" });
   let samples_per_ray_slider = imgui.slider(0, 8, undefined, 2, { text: "Samples per ray" });
   let max_sample_slider = imgui.slider(0, 16384, undefined, 2048, { text: "Samples" });
   let exposure = imgui.slider(0, 3, undefined, 1, { text: "Exposure", float: true });
@@ -307,12 +307,8 @@
 
     draw(ctx, lineWidth = 2) {
       for (const line of this.lines) {
-        line.draw(ctx, 2)
+        line.draw(ctx, 1)
       }
-      // ctx.beginPath();
-      // ctx.arc(this.x, this.y, this.radius, this.startAngle, this.endAngle);
-      // ctx.fillStyle = 'white';
-      // ctx.fill();
     }
   }
   
@@ -331,7 +327,7 @@
   const wall2 = new LineSegment(new Point(500, 400), new Point(700, 400), [255,255,0,1]);
   const wall3 = new LineSegment(new Point(200, 100), new Point(300, 70), [0,255,0,1]);
 
-  const circle = new Circle(100,80,50,2*Math.PI,Math.PI*1/2, 1000, [255,255,255,1]);
+  const circle = new Circle(275,380,50,2*Math.PI,Math.PI*1.5/2, 1000, [255,255,255,1]);
   
   const walls = [floor,floor2, wall, wall2, wall3, ...circle.lines];
   
@@ -496,9 +492,9 @@
 
     
     // Draw objects
-    for (const wall of walls) {
-      wall.draw(currentCtx)
-    }
+    // for (const wall of walls) {
+    //   wall.draw(currentCtx, 0.5)
+    // }
     // ctx.globalCompositeOperation = "saturation";
   
     // let rays = new Array(rays_amount);
