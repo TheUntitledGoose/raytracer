@@ -7,6 +7,9 @@
   
   c.height = windowHeight;
   c.width = windowWidth;
+
+  let mx;
+  let my;
   
   const c2 = document.querySelector('#imguiCanvas')
   const ctx2 = c2.getContext('2d')
@@ -15,8 +18,8 @@
   
   let reflect_checkbox = imgui.checkbox("Reflections", true);
   let specular_checkbox = imgui.checkbox("Specular reflections", true);
-  let bounces_slider = imgui.slider(0, 10, undefined, 5, { text: "Bounces" });
-  let samples_per_ray_slider = imgui.slider(0, 8, undefined, 2, { text: "Samples per ray" });
+  let bounces_slider = imgui.slider(0, 20, undefined, 10, { text: "Bounces" });
+  let samples_per_ray_slider = imgui.slider(0, 8, undefined, 2, { text: "Samples per ray", float: false });
   let max_sample_slider = imgui.slider(0, 16384, undefined, 2048, { text: "Samples" });
   let exposure = imgui.slider(0, 3, undefined, 1, { text: "Exposure", float: true });
   let progress = imgui.staticText(`Progress: 0/2048 \nFPS: 0`, "white", true)
@@ -37,7 +40,7 @@
   // let samples_per_ray = 1;
   // let max_sample = 2048;
   let bounces = bounces_slider.state;
-  let samples_per_ray = samples_per_ray_slider.state;
+  let samples_per_ray = parseInt(samples_per_ray_slider.state);
   let max_sample = max_sample_slider.state;
   
   
@@ -67,7 +70,7 @@
 
   
   // Create rays
-  const rays_amount = 25;
+  const rays_amount = 50;
   let rays = new Array(rays_amount);
 
   function light() {
@@ -85,8 +88,6 @@
   }
 
   light()
-
-  
   
   function traceRays(initialRays, walls, maxBounces = 3, currentCtx) {
     let rays = [...initialRays]; // copy of starting rays
@@ -152,32 +153,50 @@
           hitPoint.y + normal.dy * 0.0001
         );
   
+        const reflectChance = reflect_checkbox.state ? 0.5 : 0.0;
+        const diffuseChance = specular_checkbox.state ? 0.5 : 0.0;
+        const total = reflectChance + diffuseChance;
+
+        const r = Math.random() * total;
+
         // Always add the reflected ray if specular bounce is desired
-        if (reflect_checkbox.state) {
+        if (reflect_checkbox.state && r < reflectChance) {
           
           const reflected = ray.direction.reflect(normal);
 
           // Reduce energy slightly on each bounce
-          const reflectedLight = light.map(c => c * 0.85);
+          // const reflectedLight = light.map(c => c * 0.85);
 
           nextBounceRays.push(
             new Ray(offsetOrigin, reflected, light, bounce + 1)
           );
         }
-  
         // Then add diffuse scatter if desired
-        if (specular_checkbox.state) {
+        else if (specular_checkbox.state) {
+          const nx = normal.dx;
+          const ny = normal.dy;
+
           for (let i = 0; i < samples_per_ray; i++) {
-            const range = Math.PI
-            const randomOffset = Math.random() * range - range / 2;
-            const dirAngle = Math.atan2(normal.dy, normal.dx) + randomOffset;
-            const dirVec = new Vector(Math.cos(dirAngle), Math.sin(dirAngle));
+            const offset = (Math.random() - 0.5) * Math.PI;
+            const cosOff = Math.cos(offset);
+            const sinOff = Math.sin(offset);
+
+            // Rotate normal directly
+            const dx = nx * cosOff - ny * sinOff;
+            const dy = ny * cosOff + nx * sinOff;
+
+            // const range = Math.PI;
+            // const randomOffset = Math.random() * range - range / 2;
+            // const dirAngle = Math.atan2(normal.dy, normal.dx) + randomOffset;
+            // const dirVec = new Vector(Math.cos(dirAngle), Math.sin(dirAngle));
 
             // Cosine weighting + energy scaling
     
-            nextBounceRays.push(
-              new Ray(offsetOrigin, dirVec, light, bounce + 1)
-            );
+            if (nextBounceRays.length < 3000) {
+              nextBounceRays.push(
+                new Ray(offsetOrigin, new Vector(dx, dy), light, bounce + 1)
+              );
+            }
           }
         }
       }
@@ -210,13 +229,15 @@
 
   let step = 0;
 
+  currentCtx.scale(2,2)
+
   function animate() {
-    bounces = parseInt(bounces_slider.state);
-    samples_per_ray = parseInt(samples_per_ray_slider.state);
-    max_sample = parseInt(max_sample_slider.state);
+    bounces = Math.round(bounces_slider.state);
+    samples_per_ray = Math.round(samples_per_ray_slider.state);
+    max_sample = Math.round(max_sample_slider.state);
     
     let startTime = performance.now()
-    
+
     if (step > max_sample) return window.requestAnimationFrame(animate)
     // progress.text = `Progress: ${step}/${max_sample}\nFPS: ${1000/}`
 
@@ -230,20 +251,7 @@
     // for (const wall of walls) {
     //   wall.draw(currentCtx, 0.5)
     // }
-    // ctx.globalCompositeOperation = "saturation";
   
-    // let rays = new Array(rays_amount);
-    // for (let i = 0; i < rays_amount; i++) {
-      
-    //   const angle = Math.random()*30+280
-    //   const radians = -(angle*Math.PI/180);
-  
-    //   rays[i] = (new Ray(
-    //     new Point(50, 50),
-    //     new Vector(Math.cos(radians),Math.sin(radians)),
-    //     [255,255,255, 1]
-    //   ))
-    // }
     light()
     
     if (rays[0]) {
@@ -290,6 +298,7 @@
       odata[i + 3] = 255; // keep alpha fully opaque
     }
     ctx.putImageData(output, 0, 0);
+
 
     let endTime = performance.now()
 
@@ -382,5 +391,34 @@
       step = 0;
     }
   })
+
+  document.addEventListener('wheel', (e) => {
+    e.preventDefault();
+
+    step = 0;
+
+    const rect = c.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    // Get world point under mouse before zoom
+    // const before = screenToWorld(mouseX, mouseY);
+
+    // Exponential zoom for smoothness
+    const ZOOM_BASE = 1.5;
+    const zoomFactor = e.deltaY > 0 ? 1 / ZOOM_BASE : ZOOM_BASE;
+    // let newScale = finalScale * zoomFactor;
+
+    // finalScale = newScale;
+
+    // World point under mouse after zoom
+    // const after = screenToWorld(mouseX, mouseY);
+
+    // Shift camera so mouse points to same world coordinate
+    // originX += before.x - after.x;
+    // originY += before.y - after.y;
+    console.log(zoomFactor)
+    currentCtx.scale(zoomFactor, zoomFactor)
+  }, { passive: false });
   
 })()

@@ -75,7 +75,8 @@
     reflect(normal) {
       // r = d - 2 * (d ⋅ n) * n
       // reflection ray = direction of light - 2 * (dir of light *dot* normal vector) * normal vector
-      const dot = this.dot(normal);
+      // const dot = this.dot(normal);
+      const dot = Vector.static_dot(this, normal);
       const reflectedDx = this.dx - 2 * dot * normal.dx;
       const reflectedDy = this.dy - 2 * dot * normal.dy;
       return new Vector(reflectedDx, reflectedDy);
@@ -111,28 +112,41 @@
       const p2 = this.end;
      
       // const v1 = p.subtract(p1);
-      const v1 = Point.static_subtract(p, p1);
+      // const v1 = Point.static_subtract(p, p1);
+      const v1 = {
+        dx : p.x - p1.x,
+        dy : p.y - p1.y
+      }
       // const v2 = p2.subtract(p1);
-      const v2 = Point.static_subtract(p2, p1);
-      const v3 = new Vector(-d.dy, d.dx);
+      // const v2 = Point.static_subtract(p2, p1);
+      const v2 = {
+        dx : p2.x - p1.x,
+        dy : p2.y - p1.y
+      }
+      // const v3 = new Vector(-d.dy, d.dx);
+      const v3 = {dx: -d.dy, dy: d.dx};
   
       // const dot = v2.dot(v3);
-      const dot = Vector.static_dot(v2, v3);
+      // const dot = Vector.static_dot(v2, v3);
+      const dot = v2.dx * v3.dx + v2.dy * v3.dy;
       if (Math.abs(dot) < 1e-8) {
         // Parallel, no intersection
         return null;
       }
   
       // const t1 = v2.cross(v1) / dot;
-      const t1 = Vector.static_cross(v2, v1) / dot;
+      // const t1 = Vector.static_cross(v2, v1) / dot;
+      const t1 = (v2.dx * v1.dy - v2.dy * v1.dx)/ dot;
       // const t2 = v1.dot(v3) / dot;
-      const t2 = Vector.static_dot(v1, v3) / dot;
+      // const t2 = Vector.static_dot(v1, v3) / dot;
+      const t2 = (v1.dx * v3.dx + v1.dy * v3.dy) / dot;
   
       // Check if intersection is within segment bounds and in front of the ray
       if (t1 >= 0 && t2 >= 0 && t2 <= 1) {
         const intersectX = p.x + d.dx * t1;
         const intersectY = p.y + d.dy * t1;
-        return new Point(intersectX, intersectY);
+        // return new Point(intersectX, intersectY);
+        return {x: intersectX,y: intersectY};
       }
   
       return null;
@@ -188,7 +202,7 @@
           if (dist < closestDist && dist > 1e-8) {
             closestDist = dist;
             closestPoint = hitPoint;
-            closestObj = hitPoint.obj ? hitPoint.obj : obj;
+            closestObj = obj;
           }
         }
       }
@@ -196,7 +210,7 @@
       // Decide where to draw
       const drawLength = Math.min(closestDist, maxLength);
       targetCtx.strokeStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3]})`;
-      targetCtx.lineWidth = 1;
+      targetCtx.lineWidth = 0.25;
       targetCtx.beginPath();
       targetCtx.moveTo(this.origin.x, this.origin.y);
       targetCtx.lineTo(
