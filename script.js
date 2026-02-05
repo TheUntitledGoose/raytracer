@@ -20,7 +20,7 @@
   let max_sample_slider = imgui.slider(0, 16384, undefined, 2048, { text: "Samples" });
   let exposure = imgui.slider(0, 3, undefined, 1, { text: "Exposure", float: true });
   let progress = imgui.staticText(`Progress: 0/2048 \nFPS: 0`, "white", true)
-  let button = imgui.button("Render", true);
+  let button = imgui.button("Reset Render", true);
   button.onClick(() => {
     step = 0;
 
@@ -40,6 +40,8 @@
     ctx.clearRect(0,0,windowWidth,windowHeight);
   })
   
+  // let render = imgui.button("Render", true);
+  
   // Initialize the UI. This sets the height of the UI to fit all elements.
   imgui.init();
   
@@ -53,7 +55,19 @@
   
     // Helper to subtract points (vector)
     subtract(p) {
-      return new Vector(this.x - p.x, this.y - p.y);
+      return {
+        dx : this.x - p.x,
+        dy : this.y - p.y
+      }
+      // return new Vector(this.x - p.x, this.y - p.y);
+    }
+
+    static static_subtract(p1, p2) {
+      return {
+        dx : p1.x - p2.x,
+        dy : p1.y - p2.y
+      }
+      // return new Vector(this.x - p.x, this.y - p.y);
     }
    
     // Helper to clone
@@ -87,9 +101,17 @@
     dot(v) {
       return this.dx * v.dx + this.dy * v.dy;
     }
+
+    static static_dot(v1, v2) {
+      return v1.dx * v2.dx + v1.dy * v2.dy;
+    }
   
     cross(v) {
       return this.dx * v.dy - this.dy * v.dx;
+    }
+
+    static static_cross(v1,v2) {
+      return v1.dx * v2.dy - v1.dy * v2.dx;
     }
   
     // Scale
@@ -136,18 +158,23 @@
       const p1 = this.start;
       const p2 = this.end;
      
-      const v1 = p.subtract(p1);
-      const v2 = p2.subtract(p1);
+      // const v1 = p.subtract(p1);
+      const v1 = Point.static_subtract(p, p1);
+      // const v2 = p2.subtract(p1);
+      const v2 = Point.static_subtract(p2, p1);
       const v3 = new Vector(-d.dy, d.dx);
   
-      const dot = v2.dot(v3);
+      // const dot = v2.dot(v3);
+      const dot = Vector.static_dot(v2, v3);
       if (Math.abs(dot) < 1e-8) {
         // Parallel, no intersection
         return null;
       }
   
-      const t1 = v2.cross(v1) / dot;
-      const t2 = v1.dot(v3) / dot;
+      // const t1 = v2.cross(v1) / dot;
+      const t1 = Vector.static_cross(v2, v1) / dot;
+      // const t2 = v1.dot(v3) / dot;
+      const t2 = Vector.static_dot(v1, v3) / dot;
   
       // Check if intersection is within segment bounds and in front of the ray
       if (t1 >= 0 && t2 >= 0 && t2 <= 1) {
