@@ -296,6 +296,12 @@
           ),
           material
         )
+
+        this.lines[i].circle = {
+          centerX: this.x,
+          centerY: this.y
+        }
+
       }
     }
 
@@ -330,19 +336,26 @@
   const walls = [floor,floor2, wall, wall2, wall3, ...circle.lines];
   
   // Create rays
-  const rays_amount = 50;
+  const rays_amount = 25;
   let rays = new Array(rays_amount);
-  for (let i = 0; i < rays_amount; i++) {
+
+  function light() {
+    for (let i = 0; i < rays_amount; i++) {
+      
+      const angle = Math.random()*30+280
+      const radians = -(angle*Math.PI/180);
   
-    const angle = Math.random()*40+270
-    const radians = -(angle*Math.PI/180);
-  
-    rays[i] = (new Ray(
-      new Point(50, 50),
-      new Vector(Math.cos(radians),Math.sin(radians)),
-      [255,255,255, 1]
-    ))  
+      rays[i] = (new Ray(
+        new Point(50, 50),
+        new Vector(Math.cos(radians),Math.sin(radians)),
+        [255,255,255, 1]
+      ))
+    }
   }
+
+  light()
+
+  
   
   function traceRays(initialRays, walls, maxBounces = 3, currentCtx) {
     let rays = [...initialRays]; // copy of starting rays
@@ -387,6 +400,18 @@
   
         // Calculate surface normal
         let normal = wall.normal;
+        
+        // If circle, calculate ideal angle of reflection
+        const circle = wall.circle;
+        if (circle) {
+          // Center - hit point
+          const dx = circle.centerX - hitPoint.x;
+          const dy = circle.centerY - hitPoint.y;
+          const circle_normal = new Vector(dx, dy).normalize();
+
+          normal = circle_normal;
+        }
+        
         if (ray.direction.dot(normal) > 0) {
           normal = normal.scale(-1);
         }
@@ -477,17 +502,18 @@
     // ctx.globalCompositeOperation = "saturation";
   
     // let rays = new Array(rays_amount);
-    for (let i = 0; i < rays_amount; i++) {
+    // for (let i = 0; i < rays_amount; i++) {
       
-      const angle = Math.random()*30+280
-      const radians = -(angle*Math.PI/180);
+    //   const angle = Math.random()*30+280
+    //   const radians = -(angle*Math.PI/180);
   
-      rays[i] = (new Ray(
-        new Point(50, 50),
-        new Vector(Math.cos(radians),Math.sin(radians)),
-        [255,255,255, 1]
-      ))
-    }
+    //   rays[i] = (new Ray(
+    //     new Point(50, 50),
+    //     new Vector(Math.cos(radians),Math.sin(radians)),
+    //     [255,255,255, 1]
+    //   ))
+    // }
+    light()
     
     if (rays[0]) {
 
@@ -618,6 +644,9 @@
       line.start.y += e.movementY;
       line.end.x += e.movementX;
       line.end.y += e.movementY;
+
+      line.circle.centerX += e.movementX;
+      line.circle.centerY += e.movementY;
 
       step = 0;
     }
