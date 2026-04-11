@@ -10,6 +10,12 @@
 
   let mx;
   let my;
+
+  let light_obj = {
+    x:50, 
+    y:50, 
+    material: [255,255,255,1]
+  }
   
   const c2 = document.querySelector('#imguiCanvas')
   const ctx2 = c2.getContext('2d')
@@ -18,6 +24,7 @@
   
   let reflect_checkbox = imgui.checkbox("Reflections", true);
   let specular_checkbox = imgui.checkbox("Specular reflections", true);
+  let draw_walls_checkbox = imgui.checkbox("Draw walls (Reset Render)", false);
   let bounces_slider = imgui.slider(0, 20, undefined, 10, { text: "Bounces" });
   let samples_per_ray_slider = imgui.slider(0, 8, undefined, 2, { text: "Samples per ray", float: false });
   let max_sample_slider = imgui.slider(0, 16384, undefined, 2048, { text: "Samples" });
@@ -30,30 +37,64 @@
     light()
     ctx.clearRect(0,0,windowWidth,windowHeight);
   })
-  
-  // let render = imgui.button("Render", true);
+
+  imgui.staticText("- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -", undefined, true)
+  imgui.staticText("DIFFERENT ENVIRONMENTS:", undefined, true)
+
+  let default_env_button = imgui.button("Default Environment", true);
+  default_env_button.onClick(() => {
+    step = 0;
+
+    rays_amount = 50;
+    rays = new Array(rays_amount)
+
+    light_obj.angle = undefined;
+    walls = default_env;
+  })
+
+  let mirror_button = imgui.button("Mirror Environment", true);
+  mirror_button.onClick(() => {
+    step = 0;
+
+    rays_amount = 10;
+    rays = new Array(rays_amount)
+
+    const mirror = new Circle(500, 200, 100, -Math.PI * 1/3, Math.PI * 2/3, 50, [255,255,255,1])
+
+    light_obj.x = 100;
+    light_obj.y = 200;
+
+    // no, i dont understand this either.
+    light_obj.angle = `
+    (
+      (i/rays_amount) + (50 * step/max_sample/rays_amount) % (1/rays_amount)
+    )
+      *
+    (Math.PI/6) - (Math.PI/12)`;
+
+    walls = mirror.lines;
+  })
   
   // Initialize the UI. This sets the height of the UI to fit all elements.
   imgui.init();
   
-  // let bounces = 7;
-  // let samples_per_ray = 1;
-  // let max_sample = 2048;
   let bounces = bounces_slider.state;
   let samples_per_ray = parseInt(samples_per_ray_slider.state);
   let max_sample = max_sample_slider.state;
   
   
   // Create scene objects
-  const floor = new LineSegment(new Point(100, 500), new Point(700, 500), [0,105,203,1]);
-  const floor2 = new LineSegment(new Point(100, 480), new Point(300, 480), [255,255,255,1]);
-  const wall = new LineSegment(new Point(300, 300), new Point(700, 300), [255,0,0,1]);
-  const wall2 = new LineSegment(new Point(500, 400), new Point(700, 400), [255,255,0,1]);
-  const wall3 = new LineSegment(new Point(200, 100), new Point(300, 70), [0,255,0,1]);
+  const default_env = [
+    new LineSegment(new Point(100, 500), new Point(700, 500), [0,105,203,1]),
+    new LineSegment(new Point(100, 480), new Point(300, 480), [255,255,255,1]),
+    new LineSegment(new Point(300, 300), new Point(700, 300), [255,0,0,1]),
+    new LineSegment(new Point(500, 400), new Point(700, 400), [255,255,0,1]),
+    new LineSegment(new Point(200, 100), new Point(300, 70), [0,255,0,1]),
+  ]
 
   const circle = new Circle(275,380,50, -Math.PI * 1/4, Math.PI*3.5/2, 50, [255,255,255,1]);
   
-  const walls = [floor,floor2, wall, wall2, wall3, ...circle.lines];
+  let walls = [...default_env, ...circle.lines];
 
   // const dpr = window.devicePixelRatio || 1;
 
@@ -68,21 +109,21 @@
   // ctx.imageSmoothingQuality = "high";
   // ctx.scale(dpr, dpr);
 
-  
   // Create rays
-  const rays_amount = 50;
+  let rays_amount = 50;
   let rays = new Array(rays_amount);
 
   function light() {
     for (let i = 0; i < rays_amount; i++) {
       
-      const angle = Math.random()*30+280
-      const radians = -(angle*Math.PI/180);
+      // eval unsafe? more like suck my dick
+
+      const angle = light_obj.angle !== undefined ? eval(light_obj.angle) : -((Math.random()*30+280)*Math.PI/180);
   
       rays[i] = (new Ray(
-        new Point(50, 50),
-        new Vector(Math.cos(radians),Math.sin(radians)),
-        [255,255,255, 1]
+        new Point(eval(light_obj.x), eval(light_obj.y)),
+        new Vector(Math.cos(angle),Math.sin(angle)),
+        light_obj.material
       ))
     }
   }
@@ -248,9 +289,11 @@
 
     
     // Draw objects
-    // for (const wall of walls) {
-    //   wall.draw(currentCtx, 0.5)
-    // }
+    if (draw_walls_checkbox.state) {
+      for (const wall of walls) {
+        wall.draw(currentCtx, 0.5)
+      }
+    }
   
     light()
     
@@ -405,7 +448,7 @@
     // const before = screenToWorld(mouseX, mouseY);
 
     // Exponential zoom for smoothness
-    const ZOOM_BASE = 1.5;
+    const ZOOM_BASE = 1.1;
     const zoomFactor = e.deltaY > 0 ? 1 / ZOOM_BASE : ZOOM_BASE;
     // let newScale = finalScale * zoomFactor;
 
@@ -417,7 +460,7 @@
     // Shift camera so mouse points to same world coordinate
     // originX += before.x - after.x;
     // originY += before.y - after.y;
-    console.log(zoomFactor)
+    
     currentCtx.scale(zoomFactor, zoomFactor)
   }, { passive: false });
   
